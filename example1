@@ -1,0 +1,61 @@
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib import font_manager, rc
+
+# 폴더 경로 설정
+folder_path = r'C:\Users\ardit\Desktop\VSCODE TEST'
+
+# 폴더 내의 모든 파일 리스트 가져오기
+file_list = [f for f in os.listdir(folder_path) if f.endswith('.csv')]
+
+# 결과를 저장할 리스트 초기화
+results = []
+
+# 각 파일별로 계산 수행
+for file_name in file_list:
+    file_path = os.path.join(folder_path, file_name)
+    data = pd.read_csv(file_path)
+    
+    # 원하는 열 선택
+    time_column = 'Time'
+    flag_column = 'APU'
+    
+    # 시간당 Duty 계산
+    time_diff = data[time_column].diff()  # 시간 간격 계산
+    duty_percentage = (data[flag_column] * time_diff).cumsum() / data[time_column]
+    final_duty = duty_percentage.iloc[-1]
+    
+    # 결과를 딕셔너리로 저장하고 리스트에 추가
+    result = {
+        '파일명': file_name,
+        'Duty': duty_percentage,
+        'Time': data[time_column],
+        '최종 Duty': final_duty
+    }
+    results.append(result)
+
+# 페이지당 서브플롯 수 설정
+subplots_per_page = 8
+num_pages = -(-len(results) // subplots_per_page)  # 올림 연산
+
+# 결과 및 차트 출력
+for page in range(num_pages):
+    plt.figure(figsize=(12, 8))
+    
+    for idx in range(subplots_per_page):
+        plt.subplot(4, 2, idx + 1)  # 2x2 서브플롯
+        result_idx = page * subplots_per_page + idx
+        if result_idx < len(results):
+            result = results[result_idx]
+            plt.plot(result['Time'], result['Duty'])
+            plt.title(f"{result['파일명']} 작업 시간대별 Duty 변화")
+            plt.xlabel("Time")
+            plt.ylabel("Duty (%)")
+    
+    plt.tight_layout()  # 서브플롯 간격 조정
+    plt.show()
+
+# 결과를 데이터프레임으로 변환하여 표로 출력
+result_df = pd.DataFrame(results)
+print(result_df[['파일명', '최종 Duty']])
