@@ -1,0 +1,107 @@
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+from openpyxl import Workbook
+from openpyxl.drawing.image import Image
+import tkinter as tk
+from tkinter import filedialog
+
+# 폴더 경로 설정
+folder_path = r'C:\Users\ardit\Desktop\VSCODE TEST'
+
+# 결과를 저장할 리스트 초기화
+results = []
+
+# 함수: CSV 파일 처리
+def process_csv(file_path):
+    data = pd.read_csv(file_path)
+    
+    # 원하는 열 선택
+    time_column = 'Time'
+    flag_column = 'APU'
+    
+    # 시간당 Duty 계산
+    time_diff = data[time_column].diff()  # 시간 간격 계산
+    duty_percentage = (data[flag_column] * time_diff).cumsum() / data[time_column]
+    final_duty = duty_percentage.iloc[-1]
+    
+    # 결과를 딕셔너리로 저장하고 리스트에 추가
+    result = {
+        '파일명': os.path.basename(file_path),
+        'Duty': duty_percentage,
+        'Time': data[time_column],
+        '최종 Duty': final_duty
+    }
+    results.append(result)
+
+# 함수: 'result.xlsx' 생성
+def create_excel():
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "result"
+
+    # Add headers to the Excel sheet
+    ws['A1'] = '파일명'
+    ws['B1'] = '최종 Duty'
+
+    # 페이지당 서브플롯 수 설정
+    subplots_per_page = 8
+    num_pages = -(-len(results) // subplots_per_page)  # 올림 연산
+
+    # 결과 및 차트 출력
+    for page in range(num_pages):
+        plt.figure(figsize=(12, 8))
+        
+        for idx in range(subplots_per_page):
+            plt.subplot(4, 2, idx + 1)  # 2x2 서브플롯
+            result_idx = page * subplots_per_page + idx
+            if result_idx < len(results):
+                result = results[result_idx]
+                plt.plot(result['Time'], result['Duty'])
+                plt.title(f"{result['파일명']} 작업 시간대별 Duty 변화")
+                plt.xlabel("Time")
+                plt.ylabel("Duty (%)")
+        
+        plt.tight_layout()  # 서브플롯 간격 조정
+        
+        # Save the figure as an image
+        chart_image_path = os.path.join(folder_path, f"chart_{page+1}.png")
+        plt.savefig(chart_image_path, bbox_inches='tight')
+        plt.close()
+
+        # Insert the chart image into the Excel sheet
+        img = Image(chart_image_path)
+        img.anchor = ws.cell(row=1, column=3 + page * 2).coordinate
+        ws.column_dimensions[chr(ord('C') + page * 2)].width = 20
+        ws.add_image(img)
+
+    # Populate the Excel sheet with '파일명' and '최종 Duty' values
+    for idx, result in enumerate(results):
+        row_idx = idx + 2
+        ws.cell(row=row_idx, column=1, value=result['파일명'])
+        ws.cell(row=row_idx, column=2, value=result['최종 Duty'])
+
+    # Save the Excel file
+    excel_file_path = os.path.join(folder_path, 'result.xlsx')
+    wb.save(excel_file_path)
+    wb.close()
+
+    print("Excel file with charts created:", excel_file_path)
+
+# 함수: 파일 업로드 및 처리
+def upload_and_process():
+    file_paths = filedialog.askopenfilenames(filetypes=[('CSV Files', '*.csv')])
+    for file_path in file_paths:
+        process_csv(file_path)
+    create_excel()
+
+# GUI 생성
+root = tk.Tk()
+root.title("CSV 파일 업로드 및 결과 생성")
+
+# 업로드 버튼
+upload_button = tk.Button(root, text="CSV 파일 업로드 및 결과 생성", command=upload_and_process)
+upload_button.pack(pady=20)
+
+# GUI 시작
+root.mainloop()
