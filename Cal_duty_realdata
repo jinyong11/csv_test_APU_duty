@@ -1,0 +1,76 @@
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+from openpyxl import Workbook
+from openpyxl.drawing.image import Image
+from openpyxl.utils.dataframe import dataframe_to_rows
+
+# CSV 파일이 들어 있는 폴더 경로
+folder_path = r"C:\Users\6707516\Desktop\VCRM_TEST\data_csv"
+
+# 폴더 내의 모든 CSV 파일을 리스트로 저장
+csv_files = [f for f in os.listdir(folder_path) if f.endswith('.csv')]
+
+# 결과를 저장할 리스트 초기화
+results = []
+
+# Excel 워크북 생성
+workbook = Workbook()
+workbook.remove(workbook.active)  # 기본 생성된 시트 제거
+
+# 각 CSV 파일에 대해 작업 수행
+for csv_file in csv_files:
+    # CSV 파일 읽어오기
+    file_path = os.path.join(folder_path, csv_file)
+    data = pd.read_csv(file_path)
+    
+    # APU 작동 시간 계산
+    data['APU_Duty'] = (data['SteBitFlexInOutSig1_V'] == 1).astype(int)
+    
+    # 시작 시간을 0으로 설정
+    data['TotalSeconds'] = data['Seconds'] + data['Minutes']*60 + data['Hours']*3600 + data['Day']*86400
+    start_time = data['TotalSeconds'].iloc[0]
+    data['TotalSeconds'] -= start_time
+    
+    # Duty 계산
+    data['Duty'] = data['APU_Duty'].expanding().mean()
+    
+    # APU 작동 시간 총합 및 전체 시간 총합 계산
+    apu_total_time = data['APU_Duty'].sum()
+    total_time = data['TotalSeconds'].iloc[-1]
+    apu_duty = apu_total_time / total_time
+    
+    # 결과 저장
+    results.append([csv_file, total_time, apu_total_time, apu_duty])
+    
+    # 차트그리기
+    plt.plot(data['TotalSeconds'], data['Duty'])
+    plt.xlabel('Time (seconds)')
+    plt.ylabel('APU Duty')
+    plt.title(f'APU Duty Over Time - {csv_file}')  # 파일명 추가
+    plt.grid(True)
+    plt.ylim(0, 1.1)
+    
+    # 차트를 이미지로 저장
+    chart_image_path = os.path.join(folder_path, f'chart_{csv_file}.png')
+    plt.savefig(chart_image_path)
+    plt.close()  # 차트를 그린 후 닫기
+    
+    # 워크북에 시트 생성 및 이미지 삽입
+    chart_sheet = f'Chart_{csv_file}'
+    worksheet = workbook.create_sheet(title=chart_sheet)
+    img = Image(chart_image_path)
+    worksheet.add_image(img, 'A1')
+
+# 결과를 DataFrame으로 변환
+results_df = pd.DataFrame(results, columns=['File Name', 'Total Time', 'APU Total Time', 'APU Duty'])
+print(results_df)
+
+# 결과 표를 워크북에 추가
+results_sheet = workbook.create_sheet(title='Results')
+for row in dataframe_to_rows(results_df, index=False, header=True):
+    results_sheet.append(row)
+
+# Excel 파일 저장
+excel_file_path = r"C:\Users\6707516\Desktop\VCRM_TEST\Result_duty.xlsx"
+workbook.save(excel_file_path)
